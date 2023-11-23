@@ -30,11 +30,81 @@
 ### Решение 1
 
 `Запуск серверов`                                    
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/1.png)
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/2.png)
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/3.png)
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/4.png)
-![Схема](https://github.com/Replica63/Keepalived/blob/main/img/hsrp_advanced-kopacheskuvv.pkt)
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/1.png)
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/2.png)
+
+`Установка haproxy`
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/3.png)
+
+`Конфигурация файла haproxy`
+
+```
+ global
+	log /dev/log	local0
+	log /dev/log	local1 notice
+	chroot /var/lib/haproxy
+	stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners
+	stats timeout 30s
+	user haproxy
+	group haproxy
+	daemon
+
+	# Default SSL material locations
+	ca-base /etc/ssl/certs
+	crt-base /etc/ssl/private
+
+	# See: https://ssl-config.mozilla.org/#server=haproxy&server-version=2.0.3&config=intermediate
+        ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+        ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
+        ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+
+defaults
+	log	global
+	mode	http
+	option	httplog
+	option	dontlognull
+        timeout connect 5000
+        timeout client  50000
+        timeout server  50000
+	errorfile 400 /etc/haproxy/errors/400.http
+	errorfile 403 /etc/haproxy/errors/403.http
+	errorfile 408 /etc/haproxy/errors/408.http
+	errorfile 500 /etc/haproxy/errors/500.http
+	errorfile 502 /etc/haproxy/errors/502.http
+	errorfile 503 /etc/haproxy/errors/503.http
+	errorfile 504 /etc/haproxy/errors/504.http
+
+listen stats  # веб-страница со статистикой
+        bind                    :888
+        mode                    http
+        stats                   enable
+        stats uri               /stats
+        stats refresh           5s
+        stats realm             Haproxy\ Statistics
+
+frontend example  # секция фронтенд
+        mode http
+        bind :8088
+        default_backend web_servers
+        # acl ACL_example.com hdr(host) -i example.com
+        # use_backend web_servers if ACL_example.com
+
+backend web_servers    # секция бэкенд
+        mode http
+        balance roundrobin
+        option httpchk
+        http-check send meth GET uri /index.html
+        server s1 127.0.0.1:8888 check
+        server s2 127.0.0.1:9999 check
+
+listen web_tcp
+        bind :1325
+        server s1 127.0.0.1:8888 check inter 3s
+        server s2 127.0.0.1:9999 check inter 3s
+```
+![Конфигруация haproxy](https://github.com/Replica63/cluster-balance/blob/main/haproxy.cfg)
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/4.png)
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/5.png)
 
 ---
 
@@ -45,75 +115,73 @@ HAproxy должен балансировать только тот http-тра�
 На проверку направьте конфигурационный файл haproxy, скриншоты, где видно перенаправление запросов на разные серверы при обращении к HAProxy c использованием домена example.local и без него.
 ### Решение 2
 
-`Скрин двух ВМ:`
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/2.1.png)
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/2.2.png)
+`Запуск трех серверов:`
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/1.png)
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/2.png)
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/6.png)
 
-`Конфигурация первого сервера "MASTER"`
 
-```
- global_defs {
-    enable_script_security
-}
-
-vrrp_script check_script {
-      script "/home/kvv/keepalived/script.sh"
-      interval 3
-}
-
-vrrp_instance www {
-        state MASTER
-        interface enp0s8
-        virtual_router_id 4
-        priority 255
-        advert_int 1
-
-        virtual_ipaddress {
-             192.168.1.250/24
-        }
-}
+`Конфигурация файла haproxy``
 
 ```
-`Конфигурация второго сервера "BACKUP"`
+global
+        log /dev/log    local0
+        log /dev/log    local1 notice
+        chroot /var/lib/haproxy
+        stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd lis>
+        stats timeout 30s
+        user haproxy
+        group haproxy
+        daemon
 
+        # Default SSL material locations
+        ca-base /etc/ssl/certs
+        crt-base /etc/ssl/private
+
+        # See: https://ssl-config.mozilla.org/#server=haproxy&server-version=2.>
+        ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128>
+        ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SH>
+        ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+
+defaults
+        log     global
+        mode    http
+        option  httplog
+        option  dontlognull
+        timeout connect 5000
+        timeout client  50000
+        timeout server  50000
+        errorfile 400 /etc/haproxy/errors/400.http
+        errorfile 403 /etc/haproxy/errors/403.http
+        errorfile 408 /etc/haproxy/errors/408.http
+        errorfile 500 /etc/haproxy/errors/500.http
+        errorfile 502 /etc/haproxy/errors/502.http
+        errorfile 503 /etc/haproxy/errors/503.http
+        errorfile 504 /etc/haproxy/errors/504.http
+
+listen stats  # веб-страница со статистикой
+        bind                    :888
+        mode                    http
+        stats                   enable
+        stats uri               /stats
+        stats refresh           5s
+        stats realm             Haproxy\ Statistics
+
+frontend example  # секция фронтенд
+        mode http
+        bind :8088
+        #default_backend web_servers
+        acl ACL_example.local hdr(host) -i example.com
+        use_backend web_servers if ACL_example.com
+
+backend web_servers    # секция бэкенд
+        mode http
+        balance roundrobin
+        option httpchk
+        http-check send meth GET uri /index.html
+        server s1 127.0.0.1:8888 weight 2 check
+        server s2 127.0.0.1:9999 weight 3 check
+        server s3 127.0.0.1:7777 weight 4 check
 ```
- global_defs {
-    enable_script_security
-}
-
-vrrp_script check_script {
-      script "/home/kvv/keepalived/script.sh"
-      interval 3
-}
-
-vrrp_instance www {
-        state BACKUP
-        interface enp0s8
-        virtual_router_id 4
-        priority 222
-        advert_int 1
-
-        virtual_ipaddress {
-             192.168.1.250/24
-        }
-}
-
-```
-
-`Скрипт файла script.sh`
-
-```
-#!/bin/bash
-if [[ $(netstat -tuln | grep LISTEN | grep :80) ]] && [[ -f /var/www/html/index.html ]]; then
-        exit 0
-else
-        sudo systemctl stop keepalived
-fi
-```
-
-`Демонстрация keepalived:`
-
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/2.3.png)
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/2.4.png)
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/2.5.png)
-![alt text](https://github.com/Replica63/Keepalived/blob/main/img/2.6.png)
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/7.png)
+![alt text](https://github.com/Replica63/cluster-balance/blob/main/img/8.png)
